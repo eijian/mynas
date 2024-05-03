@@ -28,6 +28,116 @@ Volume system-boot on disk2s1 unmounted
 4162+0 records out
 4364173312 bytes transferred in 444.656423 secs (9814709 bytes/sec)
 
+---
+
+* macでUSBメモリにISOを書く
+
+状態確認
+
+```
+% sudo diskutil list                                                   
+/dev/disk0 (internal, physical):
+   #:                       TYPE NAME                    SIZE       IDENTIFIER
+   0:      GUID_partition_scheme                        *251.0 GB   disk0
+   1:                        EFI EFI                     314.6 MB   disk0s1
+   2:                 Apple_APFS Container disk1         250.7 GB   disk0s2
+
+/dev/disk1 (synthesized):
+   #:                       TYPE NAME                    SIZE       IDENTIFIER
+   0:      APFS Container Scheme -                      +250.7 GB   disk1
+                                 Physical Store disk0s2
+   1:                APFS Volume Machintosh HD - Data    132.2 GB   disk1s1
+   2:                APFS Volume Preboot                 3.5 GB     disk1s2
+   3:                APFS Volume Recovery                1.2 GB     disk1s3
+   4:                APFS Volume Machintosh HD           11.9 GB    disk1s4
+   5:              APFS Snapshot com.apple.os.update-... 11.9 GB    disk1s4s1
+   6:                APFS Volume VM                      2.1 GB     disk1s5
+
+/dev/disk3 (external, physical):
+   #:                       TYPE NAME                    SIZE       IDENTIFIER
+   0:     FDisk_partition_scheme                        *8.1 GB     disk3
+   1:               Windows_NTFS PNY USB 2.0             8.1 GB     disk3s1
+```
+
+* フォーマットする
+
+
+```
+% sudo diskutil list                                              
+/dev/disk0 (internal, physical):
+   #:                       TYPE NAME                    SIZE       IDENTIFIER
+   0:      GUID_partition_scheme                        *251.0 GB   disk0
+   1:                        EFI EFI                     314.6 MB   disk0s1
+   2:                 Apple_APFS Container disk1         250.7 GB   disk0s2
+
+/dev/disk1 (synthesized):
+   #:                       TYPE NAME                    SIZE       IDENTIFIER
+   0:      APFS Container Scheme -                      +250.7 GB   disk1
+                                 Physical Store disk0s2
+   1:                APFS Volume Machintosh HD - Data    132.2 GB   disk1s1
+   2:                APFS Volume Preboot                 3.5 GB     disk1s2
+   3:                APFS Volume Recovery                1.2 GB     disk1s3
+   4:                APFS Volume Machintosh HD           11.9 GB    disk1s4
+   5:              APFS Snapshot com.apple.os.update-... 11.9 GB    disk1s4s1
+   6:                APFS Volume VM                      2.1 GB     disk1s5
+
+/dev/disk3 (external, physical):
+   #:                       TYPE NAME                    SIZE       IDENTIFIER
+   0:     FDisk_partition_scheme                        *8.1 GB     disk3
+   1:                 DOS_FAT_32 UBUNTU2404              8.1 GB     disk3s1
+```
+
+
+* アンマウントする
+
+```
+% diskutil unMountDisk /dev/disk3
+Unmount of all volumes on disk3 was successful
+```
+
+* ISOイメージを書き込む
+
+```
+% sudo dd if=ubuntu-24.04-live-server-amd64.iso of=/dev/rdisk3 bs=1m
+2627+1 records in
+2627+1 records out
+2754981888 bytes transferred in 252.341345 secs (10917679 bytes/sec)
+```
+
+
+
+
+* Ubuntu Server install
+
+"Choose the base for the installation"
+
+  Ubuntu Server (minimized)
+
+* "Configure a guided storage layout, or create a custom one"
+
+  - "Use an entire disk"
+	  -> SSDドライブを選択
+
+	- "Set up this disk as an LVM group
+	  -> LVMにしない
+
+* SSH Configuration
+
+  - "Install OpenSSH server" にチェック
+
+* 最低限のパッケージ
+
+```
+$ sudo apt update
+$ sudo apt upgrade
+```
+
+  - iputils-ping
+	- less
+	- vim
+
+	
+
 
 
 * set IP address
@@ -459,6 +569,302 @@ Ignoring unknown parameter "display charset"
 New SMB password:
 Retype new SMB password:
 Added user eiji.
+
+
+## スナップショットを作成する
+
+* スナップショット用ディレクトリを作成する。
+
+$ sudo mkdir -p /volume/disk1/@snapshot/@data
+$ sudo mkdir -p /volume/disk2/@snapshot/@data
+
+* スナップショットの作成
+
+★ '-r'オプションでread-onlyになる。
+
+/$ sudo btrfs subvolume snapshot -r /volume/disk1/@data /volume/disk1/@snapshot/@data/ss-20240414
+Create a readonly snapshot of '/volume/disk1/@data' in '/volume/disk1/@snapshot/@data/ss-20240414'
+$ sudo btrfs subvolume snapshot -r /volume/disk2/@data /volume/disk2/@snapshot/@data/ss-20240414
+Create a readonly snapshot of '/volume/disk2/@data' in '/volume/disk2/@snapshot/@data/ss-20240414'
+
+★コマンドを叩くごとにスナップショットが作られる
+
+* スナップショットを消してみる
+
+$ sudo ls -l /volume/disk1/@snapshot/@data/
+total 0
+drwxr-xr-x 1 root root 34 Mar 24 07:37 ss-20240414
+$ sudo btrfs subvolume delete /volume/disk1/@snapshot/@data/ss-20240414
+Delete subvolume (no-commit): '/volume/disk1/@snapshot/@data/ss-20240414'
+$ sudo ls -l  /volume/disk1/@snapshot/@data/
+total 0
+
+★ ss-20240414 が消えている（@snapshot/@dataはそのまま）
+
+
+
+## データ破壊の検出
+
+scrubサブコマンドを使う
+
+$ sudo btrfs scrub start /volume/disk1/@data
+scrub started on /volume/disk1/@data, fsid 319ca66d-36e2-4541-af20-37a51053a0b3 (pid=79633)
+$ sudo btrfs scrub status /volume/disk1/@data
+UUID:             319ca66d-36e2-4541-af20-37a51053a0b3
+Scrub started:    Sun Apr 14 10:02:22 2024
+Status:           finished
+Duration:         0:00:15
+Total to scrub:   466.80MiB
+Rate:             31.12MiB/s
+Error summary:    no errors found     ← 破壊がなければこうなる？
+
+
+
+## btrbkの導入
+
+* インストール
+
+> $ sudo apt install btrbk
+
+* 設定ファイル (/etc/btrbk/btrbk.conf)
+
+サンプルのvolume設定はコメントアウトし以下を追加。
+
+```
+volume /volume/disk1
+  subvolume @data
+    snapshot_dir   @snapshot/@data
+    target send-receive /volume/disk2/
+```
+
+btrbkの実行。実行ログは /var/log/btrbk.log
+
+```
+$ btrbk -q run
+```
+
+結果として、スナップショットとバックアップが作成される。
+
+```
+/volume/disk1/@snapshot/@data/@data.20240414T1205    ← スナップショット
+/volume/disk2/@data.20240414T1205                    ← バックアップ
+```
+
+しかしデフォルトでどちらともread-onlyになるらしい。
+参考URLに柿記述あり。使う段になったらrwでスナップショットを作る？
+
+> Note that btrbk snapshots and backups are read-only, this means you have to create
+> a run-time (rw) snapshot before booting into it:
+>
+> # btrfs subvolume snapshot /mnt/btr_pool/backup/btrbk/rootfs-20150101 /mnt/btr_pool/rootfs_testing
+
+$ sudo btrfs subvolume show /volume/disk2  ← 親ボリューム
+/
+	Name: 			<FS_TREE>
+	UUID: 			35ba95b0-b05b-429a-a232-0df6e09cdf0a
+	Parent UUID: 		-
+	Received UUID: 		-
+	Creation time: 		2024-03-24 07:21:46 +0000
+	Subvolume ID: 		5
+	Generation: 		14
+	Gen at creation: 	0
+	Parent ID: 		0
+	Top level ID: 		0
+	Flags: 			-
+	Send transid: 		0
+	Send time: 		2024-03-24 07:21:46 +0000
+	Receive transid: 	0
+	Receive time: 		-
+	Snapshot(s):
+ubuntu@ubuntu:~$ sudo btrfs subvolume show /volume/disk2/@data.20240414T1205  ← btrbkで作られたROサブボリューム
+@data.20240414T1205
+	Name: 			@data.20240414T1205
+	UUID: 			724e7ce2-5c4d-bc44-b57b-376e377ea7e2
+	Parent UUID: 		-
+	Received UUID: 		4acc9007-be4f-7649-8e61-9443f81ed9c9
+	Creation time: 		2024-04-14 12:05:45 +0000
+	Subvolume ID: 		258
+	Generation: 		23
+	Gen at creation: 	14
+	Parent ID: 		5
+	Top level ID: 		5
+	Flags: 			readonly
+	Send transid: 		49
+	Send time: 		2024-04-14 12:05:45 +0000
+	Receive transid: 	21
+	Receive time: 		2024-04-14 12:10:55 +0000
+	Snapshot(s):
+ubuntu@ubuntu:~$ sudo btrfs subvolume snapshot /volume/disk2/@data.20240414T1205 /volume/disk2/@data  ← RWスナップショット
+Create a snapshot of '/volume/disk2/@data.20240414T1205' in '/volume/disk2/@data'
+ubuntu@ubuntu:~$ sudo btrfs subvolume show /volume/disk2/@data  ← 読み書きできる？
+@data
+	Name: 			@data
+	UUID: 			1cf3cf18-9fc2-7e4c-9813-cbd5f93e26c4
+	Parent UUID: 		724e7ce2-5c4d-bc44-b57b-376e377ea7e2
+	Received UUID: 		-
+	Creation time: 		2024-04-14 12:40:08 +0000
+	Subvolume ID: 		259
+	Generation: 		26
+	Gen at creation: 	26
+	Parent ID: 		5
+	Top level ID: 		5
+	Flags: 			-
+	Send transid: 		0
+	Send time: 		2024-04-14 12:40:08 +0000
+	Receive transid: 	0
+	Receive time: 		-
+	Snapshot(s):
+
+* 強制的にバックアップしたサブボリュームをRWにする。
+
+$ sudo btrfs property set -f -ts /volume/disk2/@data.20240414T1205 ro false
+$ sudo btrfs property get -ts /volume/disk2/@data.20240414T1205
+ro=false
+$ sudo btrfs subvolume show /volume/disk2/@data.20240414T1205
+@data.20240414T1205
+	Name: 			@data.20240414T1205
+	UUID: 			724e7ce2-5c4d-bc44-b57b-376e377ea7e2
+	Parent UUID: 		-
+	Received UUID: 		-                                     ← UUIDが消えた
+	Creation time: 		2024-04-14 12:05:45 +0000
+	Subvolume ID: 		258
+	Generation: 		26
+	Gen at creation: 	14
+	Parent ID: 		5
+	Top level ID: 		5
+	Flags: 			-                                           ← readonlyが消えた
+	Send transid: 		0
+	Send time: 		2024-04-14 12:05:45 +0000
+	Receive transid: 	30
+	Receive time: 		2024-04-14 12:58:49 +0000
+	Snapshot(s):
+
+
+★試すべきこと
+・masterをとりはずし、/mnt/nasdisk1_data へ /volume/disk2/@data をマウントしてみる→共有できるか？
+★できた。@data.XXX に対し @data でシンボリックリンクを貼り、下記のようにfstabのLABELをサブ側に
+変えることで実現可能。
+
+$ cat /etc/fstab 
+LABEL=writable	/	ext4	discard,errors=remount-ro	0 1
+LABEL=system-boot       /boot/firmware  vfat    defaults        0       1
+LABEL=NASDISK001	/volume/disk1	btrfs	noatime,compress-force=lzo,space_cache=v2	0	0
+LABEL=NASDISK002	/volume/disk2	btrfs	noatime,compress-force=lzo,space_cache=v2	0	0
+#LABEL=NASDISK001	/mnt/nasdisk1_data	btrfs	subvol=/@data,noatime,compress-force=lzo,space_cache=v2	0	0
+LABEL=NASDISK002	/mnt/nasdisk1_data	btrfs	subvol=/@data,noatime,compress-force=lzo,space_cache=v2	0	0
+#LABEL=NASDISK002	/mnt/nasdisk2_data	btrfs	subvol=/@data,noatime,compress-force=lzo,space_cache=v2	0	0
+
+
+ファイルを増やした後、マウント設定を元に戻し再起動。その後 btrbk -q runを実行すると警告が出た。
+
+---
+$ sudo btrbk -q run
+WARNING: Target subvolume "/volume/disk2/@data.20240414T1205" exists, but is not a receive target of "/volume/disk1/@snapshot/@data/@data.20240414T1205"
+WARNING: Please delete stray subvolumes: "btrbk clean /volume/disk2"
+WARNING: Skipping backup of: /volume/disk1/@snapshot/@data/@data.20240414T1205
+---
+
+警告に従い clean コマンドを実行
+
+$ sudo btrbk clean /volume/disk2
+--------------------------------------------------------------------------------
+Cleanup Summary (btrbk command line client, version 0.31.3)
+
+    Date:   Sun Apr 14 14:29:40 2024
+    Config: /etc/btrbk/btrbk.conf
+    Filter: /volume/disk2
+
+Legend:
+    ---  deleted subvolume (incomplete backup)
+--------------------------------------------------------------------------------
+/volume/disk2/@data.*
+--- /volume/disk2/@data.20240414T1205
+
+
+clean後はバックアップが消えた。@dataの名で作ったシンボリックリンクは消す。
+
+$ ls -la /volume/disk2
+total 24
+drwxr-xr-x 1 root root   10 Apr 14 14:29 .
+drwxr-xr-x 4 root root 4096 Mar 24 07:24 ..
+lrwxrwxrwx 1 root root   19 Apr 14 14:18 @data -> @data.20240414T1205
+$ sudo rm /volume/disk2/@data
+$ ls -la /volume/disk2
+total 20
+drwxr-xr-x 1 root root    0 Apr 14 14:31 .
+drwxr-xr-x 4 root root 4096 Mar 24 07:24 ..
+
+
+再度 btrbk を実行
+
+$ sudo btrbk -q run
+
+
+別日にbtrbkを実行すると、サブボリュームが増えた。
+
+$ sudo btrbk -q run
+$ ls -l /volume/disk2/
+total 0
+drwxr-xr-x 1 root root 34 Apr 14 14:32 @data.20240414T1205
+drwxr-xr-x 1 root root 34 Apr 14 14:32 @data.20240416T1450
+
+ファイルシステムの消費量はdisk1, disk2とも同程度なので、btrbkの実行のたびに容量が
+食われることはなさそう。
+
+$ sudo btrfs filesystem show
+Label: 'NASDISK002'  uuid: 82262bb6-3e8d-4187-b96b-7b1f8f834b80
+	Total devices 1 FS bytes used 466.07MiB
+	devid    1 size 28.91GiB used 1.56GiB path /dev/sda1
+
+Label: 'NASDISK001'  uuid: 319ca66d-36e2-4541-af20-37a51053a0b3
+	Total devices 1 FS bytes used 466.10MiB
+	devid    1 size 28.91GiB used 1.57GiB path /dev/sdb1
+
+* 主ディスクにファイル追加（btrbk実行前）
+
+$ sudo btrfs filesystem show
+Label: 'NASDISK002'  uuid: 82262bb6-3e8d-4187-b96b-7b1f8f834b80
+	Total devices 1 FS bytes used 466.07MiB
+	devid    1 size 28.91GiB used 1.56GiB path /dev/sda1
+
+Label: 'NASDISK001'  uuid: 319ca66d-36e2-4541-af20-37a51053a0b3
+	Total devices 1 FS bytes used 562.75MiB
+	devid    1 size 28.91GiB used 1.57GiB path /dev/sdb1
+
+※ btrbk実行 -> なぜか同じ大きさにならない
+
+$ sudo btrfs filesystem show
+Label: 'NASDISK002'  uuid: 82262bb6-3e8d-4187-b96b-7b1f8f834b80
+	Total devices 1 FS bytes used 497.37MiB
+	devid    1 size 28.91GiB used 1.56GiB path /dev/sda1
+
+Label: 'NASDISK001'  uuid: 319ca66d-36e2-4541-af20-37a51053a0b3
+	Total devices 1 FS bytes used 562.79MiB
+	devid    1 size 28.91GiB used 1.57GiB path /dev/sdb1
+
+時間が経つと完全に同期した
+
+$ sudo btrfs filesystem show
+Label: 'NASDISK002'  uuid: 82262bb6-3e8d-4187-b96b-7b1f8f834b80
+	Total devices 1 FS bytes used 562.75MiB
+	devid    1 size 28.91GiB used 1.56GiB path /dev/sda1
+
+Label: 'NASDISK001'  uuid: 319ca66d-36e2-4541-af20-37a51053a0b3
+	Total devices 1 FS bytes used 562.74MiB
+	devid    1 size 28.91GiB used 1.57GiB path /dev/sdb1
+
+---
+
+## 参考URL
+
+https://zenn.dev/yotan/articles/8082cfe1060860
+https://qiita.com/hanaata/items/b4243f49e83baa20b425
+https://zenn.dev/daddy_yukio/articles/8c6a15fc09548a
+https://blog.bridgey.dev/2020/03/14/backup-using-btrbk/
+https://blog.bridgey.dev/2020/02/23/convert-to-raid1-on-btrfs/
+https://github.com/digint/btrbk/blob/master/doc/FAQ.md
+https://cat-in-136.github.io/2021/09/zenzen-wakaranai-oretachi-funikide-btrfs-wo-tsukatteiru.html
+
 
 
 ---
