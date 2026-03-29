@@ -11,6 +11,7 @@
 
 * image copy
 
+```
 % df
 Filesystem                           512-blocks       Used    Available Capacity    iused       ifree %iused  Mounted on
 /dev/disk1s4s1                        489620264   23209728    150500256    14%     356049   752501280    0%   /
@@ -18,7 +19,7 @@ devfs                                       381        381            0   100%  
 /dev/disk1s2                          489620264    6814736    150500256     5%       1402   752501280    0%   /System/Volumes/Preboot
    :
 /dev/disk2s1                             516190     247303       268887    48%          0           0  100%   /Volumes/system-boot
-
+```
 
 % sudo diskutil unmount /dev/disk2s1
 Volume system-boot on disk2s1 unmounted

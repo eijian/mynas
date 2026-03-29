@@ -101,6 +101,129 @@ $ sudo timedatectl list-timezones
 $ sudo timedatectl set-timezone Asia/Tokyo
 ```
 
+* 追加したパッケージ(Ubuntu)
+
+    - aria2c : HTTP/TORRENTクライアント
+    - cifs-utils : SMBファイルシステムのマウント用
+    - gcc/g++
+    - make
+    - libgmp3-dev
+    - unrar
+    - zip
+    - ruby
+    - ruby-dev
+    - git
+    - nokogiri
+    - sqlite3
+    - net-tools
+    - cmake
+    - pkg-config
+    - libfontconfig1-dev
+    - mariadb-server
+    - mariadb-client
+    - mariadb-common
+    - yt-dlp
+    - qemu-system
+    
+
+
+* 追加したパッケージ（Ruby Gem）
+
+    - nokogiri
+    - sqlite3
+    - selenium-webdriver
+
+* Rust
+    - sudo curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    - source "$HOME/.cargo/env"
+
+* Haskell
+    - GHCupの導入
+
+```
+curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
+```
+
+raytracerの実行方法
+
+```
+$ cabal new-build
+$ ruby util/iterator3.rb ... | ruby util/averager2.rb -exr ~/tmp/xxxx.exr
+```
+
+
+
+
+* Maria-DB
+  - $ apt install mariadb-server
+  - $ sudo mysql_secure_installation 
+    （質問に回答する）
+Switch to unix_socket authentication [Y/n] n
+Change the root password? [Y/n] y
+New password:                                     <- a..i8..
+Re-enter new password: 
+Remove anonymous users? [Y/n] y
+Disallow root login remotely? [Y/n] y
+Remove test database and access to it? [Y/n] y
+Reload privilege tables now? [Y/n] y
+　　:
+Thanks for using MariaDB!
+
+  - 文字コードをutf8mb4にする
+  - 特にクライアントソフトで入力できるようにする
+  - /etc/mysql/mariadb.conf.d/50-client.cnf に以下を追加
+　　[client]
+   default-character-set=utf8mb4
+
+  データは/var/lib/mysql配下
+
+  - 接続方法
+
+```
+$ mariadb -u root -p
+Enter password:        <- 設定したパスワード
+   :
+MariaDB [(none)]> use eptank
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+MariaDB [eptank]> status;
+--------------
+mariadb  Ver 15.1 Distrib 10.11.7-MariaDB, for debian-linux-gnu (x86_64) using  EditLine wrapper
+
+Connection id:		42
+Current database:	eptank
+  :
+```
+
+  - 単純にDBファイルをコピーするとテーブルが見えなくなる
+    -> ダンプコマンドでバックアップが必要
+    
+
+
+
+## GPU用ドライバ
+
+AMDが配布
+  URL: https://www.amd.com/ja/support/linux-drivers
+
+下記インストーラを入手し、インストールする。
+  amdgpu-install_6.0.60002-1_all.deb
+
+```
+$ sudo apt install ./amdgpu-install_6.0.60002-1_all.deb
+```
+
+これでamdgpu-installコマンドが導入される。
+
+ユーザをrenderグループに入れないとGPUプログラムが動かないかもしれな。
+
+$ sudo usermod -aG render eiji
+
+
+
+
 ### データ用HDDにbtrfsを作り込む
 
 * ファイルシステム構築
@@ -457,6 +580,17 @@ $ sudo btrbk -q run
 ```
 
 
+## 旧NASからのデータコピー
+
+転送元（旧NAS）をマウントする。ファイルシステムはCIFS。
+
+```
+$ sudo mount -t cifs -o username=eiji,password=akagi //192.168.11.203/Public /mnt/drobo
+```
+
+```
+$ rsync -rlv --chmod=D700,F600 /mnt/drobo/[source dir] /mnt/nasdisk1_data/public/[dest dir]
+```
 
 
 
