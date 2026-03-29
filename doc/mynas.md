@@ -854,6 +854,74 @@ Label: 'NASDISK001'  uuid: 319ca66d-36e2-4541-af20-37a51053a0b3
 	Total devices 1 FS bytes used 562.74MiB
 	devid    1 size 28.91GiB used 1.57GiB path /dev/sdb1
 
+
+## ---- 後日談
+
+サーバを再起動したらカーネルパニックを起こして起動できなくなった。メッセージの
+最後の方に気になる記載がある。
+
+```
+  :
+/dev/root: Can't open blockdev
+VFS: Cannot open root devide "/dev/nvme0n1p2" or unknown-block(0,0): error -6
+  :
+Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)
+  :
+```
+
+症状からググって出てきた記事が下記。まさにこれだった。
+
+https://qiita.com/yuta9LB/items/4cab81e24bc87f631b46
+
+「3. GRUBの設定ファイル確認」以降の手順を実施して回復した。手順を改めて書いておく
+
+* Ubuntuのインストール用USBを作成する。これは色々なところで記事になっている。
+  cf) vhttps://rtc-fukushima.jp/technical/6671/
+* インストールのメニューが出たら一番上の「Try ...」を選択する。
+* 言語選択画面で、右上の「Help」から「Enter shell」を選び、Liveモードでログインする。
+* パーティション情報を確認する。問題のパーティションが表示される。
+```
+# lsblk -f
+    :
+/dve/nvme0n1p2 ....
+```
+* 手動でマウントし、それをルートにする。
+```
+# sudo mount /dev/nvme0n1p2 /mnt
+# for dir in /dev /proc /sys /run; do
+>   sudo mount --bind $dir /mnt$dir
+> done
+# sudo chroot /mnt
+```
+* GRUBの設定ファイルを確認する。
+```
+# cat /mnt/boot/grub/grub.cfg | grep -Ei 'menuentry|linux|initrd'
+  :
+menuentry 'Ubuntu' ... {
+  :
+  linux /boot/vmlinuz-6.8.0-71-generic root=/dev/nvme0n1p2 ro ...
+  ★本来はこの次に'initrd /boot/initrd.img...'なる行があるはずとのこと。実際存在しなかった。
+}
+```
+* 必要なinitrdイメージがあるかどうか確認する。今回はイメージファイル自体は消えていなかった。
+```
+# ls -lR /mnt/boot
+  :
+initrd.img-6.8.0-71-generic
+  :
+```
+* initrdファイルの再生成を行う。
+```
+# update-initramfs -c -k 6.8.0-71-generic
+  :
+# update-grub
+  :
+```
+* サーバを再起動する。
+
+これで復活した。
+
+
 ---
 
 ## 参考URL
